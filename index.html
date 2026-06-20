@@ -3,62 +3,108 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>PAINTING IS LIFE - Studio</title>
+    <title>PAINTING IS LIFE - Sony Sketch Edition</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-    <div class="app-container">
-        <aside class="sidebar">
-            <div class="logo">PIL</div>
-            <div class="tool-icon active" id="brush" title="Fırça">🖌️</div>
-            <div class="tool-icon" id="eraser" title="Silgi">🧽</div>
-            <div class="tool-icon" id="spray" title="Sprey">💨</div>
-            <div class="tool-icon" id="glow" title="Neon">✨</div>
-        </aside>
-
-        <main class="main-workspace">
-            <header class="app-header">
+    <div class="app-wrapper">
+        <header class="top-bar">
+            <div class="logo-area">
+                <span class="app-icon">🎨</span>
                 <h1>PAINTING IS LIFE</h1>
-                <button id="exportBtn" class="action-btn success">4K Kaydet</button>
-            </header>
-            
-            <div class="canvas-area">
-                <canvas id="ultraCanvas"></canvas>
             </div>
-
-            <footer class="bottom-controls">
-                <div class="control-group">
-                    <label for="colorPicker">Renk</label>
-                    <input type="color" id="colorPicker" value="#6366f1">
-                </div>
-                <div class="control-group">
-                    <label for="sizeSlider">Boyut (<span id="sizeVal">15</span>px)</label>
-                    <input type="range" id="sizeSlider" min="1" max="150" value="15">
-                </div>
-                <div class="control-group">
-                    <label for="opacitySlider">Opaklık (<span id="opacityVal">100</span>%)</label>
-                    <input type="range" id="opacitySlider" min="1" max="100" value="100">
-                </div>
-                <div class="control-group">
-                    <button id="clearBtn" class="action-btn danger">Temizle</button>
-                </div>
-            </footer>
-        </main>
-
-        <aside class="layer-panel">
-            <h3>KATMANLAR</h3>
-            <div class="layer-list">
-                <div class="layer-item active">
-                    <span>Çizim Katmanı</span>
-                    <span class="eye-icon">👁️</span>
-                </div>
-                <div class="layer-item locked">
-                    <span>Arka Plan</span>
-                    <span class="eye-icon">👁️</span>
-                </div>
+            <div class="global-actions">
+                <button id="undoBtn" class="icon-btn" title="Geri Al">↩️</button>
+                <button id="redoBtn" class="icon-btn" title="İleri Al">↪️</button>
+                <button id="clearBtn" class="icon-btn danger" title="Tümünü Temizle">🗑️</button>
+                <button id="exportBtn" class="save-btn" title="Cihaza Kaydet">4K Çıktı Al</button>
             </div>
-        </aside>
+        </header>
+
+        <div class="workspace">
+            <aside class="left-sidebar">
+                <div class="tool-section-title">ARAÇLAR</div>
+                <div class="tool-grid">
+                    <button class="tool-btn active" id="penTool" data-type="pen">
+                        <span class="emoji">✏️</span><span class="label">Kalem</span>
+                    </button>
+                    <button class="tool-btn" id="brushTool" data-type="brush">
+                        <span class="emoji">🖌️</span><span class="label">Fırça</span>
+                    </button>
+                    <button class="tool-btn" id="markerTool" data-type="marker">
+                        <span class="emoji">🖍️</span><span class="label">Markör</span>
+                    </button>
+                    <button class="tool-btn" id="glowTool" data-type="glow">
+                        <span class="emoji">✨</span><span class="label">Neon</span>
+                    </button>
+                    <button class="tool-btn" id="sprayTool" data-type="spray">
+                        <span class="emoji">💨</span><span class="label">Sprey</span>
+                    </button>
+                    <button class="tool-btn" id="eraserTool" data-type="eraser">
+                        <span class="emoji">🧽</span><span class="label">Silgi</span>
+                    </button>
+                </div>
+
+                <div class="tool-section-title">HASSAS AYARLAR</div>
+                <div class="sliders-block">
+                    <div class="slider-wrapper">
+                        <div class="slider-info">
+                            <span>Fırça Kalınlığı</span>
+                            <b id="sizeVal">12px</b>
+                        </div>
+                        <input type="range" id="sizeSlider" min="1" max="200" value="12">
+                    </div>
+
+                    <div class="slider-wrapper">
+                        <div class="slider-info">
+                            <span>Opaklık (Saydamlık)</span>
+                            <b id="opacityVal">100%</b>
+                        </div>
+                        <input type="range" id="opacitySlider" min="1" max="100" value="100">
+                    </div>
+                </div>
+            </aside>
+
+            <main class="canvas-holder">
+                <canvas id="sketchCanvas"></canvas>
+            </main>
+
+            <aside class="right-sidebar">
+                <div class="tool-section-title">TÜM RENKLER</div>
+                <div class="advanced-color-box">
+                    <input type="color" id="globalColorPicker" value="#4f46e5">
+                    <span class="color-text">Renk Spektrumunu Aç</span>
+                </div>
+                
+                <div class="quick-palette" id="quickPalette">
+                    <div class="palette-color active" style="background: #4f46e5;" data-color="#4f46e5"></div>
+                    <div class="palette-color" style="background: #ef4444;" data-color="#ef4444"></div>
+                    <div class="palette-color" style="background: #10b981;" data-color="#10b981"></div>
+                    <div class="palette-color" style="background: #f59e0b;" data-color="#f59e0b"></div>
+                    <div class="palette-color" style="background: #ec4899;" data-color="#ec4899"></div>
+                    <div class="palette-color" style="background: #06b6d4;" data-color="#06b6d4"></div>
+                    <div class="palette-color" style="background: #000000;" data-color="#000000"></div>
+                    <div class="palette-color" style="background: #8b5cf6;" data-color="#8b5cf6"></div>
+                    <div class="palette-color" style="background: #ff7f50;" data-color="#ff7f50"></div>
+                    <div class="palette-color" style="background: #adff2f;" data-color="#adff2f"></div>
+                </div>
+
+                <div class="tool-section-title" style="margin-top:20px;">KATMAN YÖNETİCİSİ</div>
+                <div class="layers-container">
+                    <div class="layer-node active">
+                        <span class="layer-preview">🎨</span>
+                        <span class="layer-name">Üst Çizim Katmanı</span>
+                        <button class="layer-vis">👁️</button>
+                    </div>
+                    <div class="layer-node locked">
+                        <span class="layer-preview" style="background:#fff;"></span>
+                        <span class="layer-name">Tuval Arka Planı</span>
+                        <button class="layer-vis">👁️</button>
+                    </div>
+                </div>
+            </aside>
+        </div>
     </div>
 
     <script src="script.js"></script>
