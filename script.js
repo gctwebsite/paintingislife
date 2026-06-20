@@ -1,160 +1,256 @@
-const canvas = document.getElementById('ultraCanvas');
+const canvas = document.getElementById('sketchCanvas');
 const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
-// Element Bağlantıları
-const colorPicker = document.getElementById('colorPicker');
+// Arayüz Element Seçicileri
 const sizeSlider = document.getElementById('sizeSlider');
 const sizeVal = document.getElementById('sizeVal');
 const opacitySlider = document.getElementById('opacitySlider');
 const opacityVal = document.getElementById('opacityVal');
+const globalColorPicker = document.getElementById('globalColorPicker');
+const quickPalette = document.getElementById('quickPalette');
+const toolBtns = document.querySelectorAll('.tool-btn');
 const clearBtn = document.getElementById('clearBtn');
 const exportBtn = document.getElementById('exportBtn');
-const toolIcons = document.querySelectorAll('.tool-icon');
+const undoBtn = document.getElementById('undoBtn');
+const redoBtn = document.getElementById('redoBtn');
 
-// Sistem Durumu
+// Durum Takip Belleği (State)
 let isDrawing = false;
-let lastX = 0;
-let lastY = 0;
-let currentTool = 'brush'; // brush, eraser, spray, glow
+let currentTool = 'pen'; // pen, brush, marker, glow, spray, eraser
+let activeColor = '#4f46e5';
+let points = []; // Akıcı çizim (Bezier Eğrisi) için nokta koordinat deposu
 
-// Ekran / Cihaz Duyarlı Boyutlandırma Motoru (PC, Tablet, Telefon Sınırsız Uyum)
-function resizeCanvas() {
+// Geri / İleri Al Sistemi (Undo-Redo Tarihçesi)
+let undoStack = [];
+let redoStack = [];
+const maxHistory = 25; // Tarayıcı hafızasını yormayacak maksimum geri alma limiti
+
+// Uygulama ve Tuval Adaptasyon Motoru
+function adjustCanvasEngine() {
     const dpr = window.devicePixelRatio || 1;
-    const sidebarWidth = window.innerWidth > 768 ? 290 : 70; // Paneller dahil genişlik hesabı
-    
-    canvas.width = (window.innerWidth - sidebarWidth) * dpr;
-    canvas.height = (window.innerHeight - 110) * dpr;
-    canvas.style.width = (window.innerWidth - sidebarWidth) + 'px';
-    canvas.style.height = (window.innerHeight - 110) + 'px';
-    
+    // Paneller hesaba katılarak tuval boyutu çıkarılır
+    const horizontalMargin = window.innerWidth > 1024 ? 540 : 0;
+    const verticalMargin = 60;
+
+    canvas.width = (window.innerWidth - horizontalMargin) * dpr;
+    canvas.height = (window.innerHeight - verticalMargin) * dpr;
+    canvas.style.width = (window.innerWidth - horizontalMargin) + 'px';
+    canvas.style.height = (window.innerHeight - verticalMargin) + 'px';
+
     ctx.scale(dpr, dpr);
     
-    // Arka planı koru ve beyaz yap
+    // Beyaz arka plan sabitlemesi
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    setupBrushQuality();
+    
+    saveState(); // İlk boş ekran durumunu hafızaya al
 }
 
-function setupBrushQuality() {
+// Kalite Yapılandırması
+function setContextSettings() {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
+    ctx.shadowBlur = 0;
 }
 
-// Hex kodunu şeffaf RGBA formatına çeviren motor
-function getRGBAColor(hex, opacity) {
+// Renk Dönüştürücü (HEX to RGBA)
+function hexToRGBA(hex, opacity) {
     const r = parseInt(hex.slice(1, 3), 16);
     const g = parseInt(hex.slice(3, 5), 16);
     const b = parseInt(hex.slice(5, 7), 16);
     return `rgba(${r}, ${g}, ${b}, ${opacity / 100})`;
 }
 
-// Gelişmiş Çizim Motoru
+// Geçmiş Kayıt Fonksiyonu (Undo/Redo Altyapısı)
+function saveState() {
+    if (undoStack.length >= maxHistory) undoStack.shift();
+    undoStack.push(canvas.toDataURL());
+    redoStack = []; // Yeni çizimde ileri alma havuzunu boşalt
+}
+
+// Geri Al Motoru
+undoBtn.addEventListener('click', () => {
+    if (undoStack.length > 1) {
+        redoStack.push(undoStack.pop());
+        restoreCanvas(undoStack[undoStack.length - 1]);
+    }
+});
+
+// İleri Al Motoru
+redoBtn.addEventListener('click', () => {
+    if (redoStack.length > 0) {
+        const state = redoStack.pop();
+        undoStack.push(state);
+        restoreCanvas(state);
+    }
+});
+
+function restoreCanvas(dataUrl) {
+    const img = new Image();
+    img.src = dataUrl;
+    img.onload = () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // DPR ölçeğine sadık kalarak resmi yeniden çizdirme
+        ctx.drawImage(img, 0, 0, canvas.width / (window.devicePixelRatio || 1), canvas.height / (window.devicePixelRatio || 1));
+    };
+}
+
+// Çizim Başlama Anı
+function startDrawing(e) {
+    isDrawing = true;
+    setContextSettings();
+    points = []; // Noktaları sıfırla
+    
+    const coord = getCoordinates(e);
+    points.push({ x: coord.x, y: coord.y });
+    
+    if (currentTool === 'spray') {
+        draw(e);
+    }
+}
+
+// Ana Çizim ve Akıcılık (Interpolation) Motoru
 function draw(e) {
     if (!isDrawing) return;
 
-    // Koordinatları Al (Fare veya Dokunmatik Algılama)
-    const rect = canvas.getBoundingClientRect();
-    const clientX = e.clientX || (e.touches && e.touches[0].clientX);
-    const clientY = e.clientY || (e.touches && e.touches[0].clientY);
-    
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
+    const coord = getCoordinates(e);
+    const size = parseFloat(sizeSlider.value);
+    const opacity = parseFloat(opacitySlider.value);
 
-    const size = sizeSlider.value;
-    const opacity = opacitySlider.value;
-    const color = colorPicker.value;
-
-    ctx.lineWidth = size;
-
-    if (currentTool === 'eraser') {
-        // Silgi Modu
-        ctx.strokeStyle = '#ffffff';
+    if (currentTool === 'spray') {
+        // Sprey Efekti
         ctx.shadowBlur = 0;
-        ctx.beginPath();
-        ctx.moveTo(lastX, lastY);
-        ctx.lineTo(x, y);
-        ctx.stroke();
-    } else if (currentTool === 'brush') {
-        // Standart İllüstrasyon Fırçası
-        ctx.strokeStyle = getRGBAColor(color, opacity);
-        ctx.shadowBlur = 0;
-        ctx.beginPath();
-        ctx.moveTo(lastX, lastY);
-        ctx.lineTo(x, y);
-        ctx.stroke();
-    } else if (currentTool === 'glow') {
-        // Neon / Parlama Etkili Fırça
-        ctx.strokeStyle = getRGBAColor(color, opacity);
-        ctx.shadowBlur = size / 2;
-        ctx.shadowColor = color;
-        ctx.beginPath();
-        ctx.moveTo(lastX, lastY);
-        ctx.lineTo(x, y);
-        ctx.stroke();
-    } else if (currentTool === 'spray') {
-        // Dijital Sprey (Airbrush) Algoritması
-        ctx.shadowBlur = 0;
-        const density = 30;
+        const density = 25;
         for (let i = 0; i < density; i++) {
             const angle = Math.random() * Math.PI * 2;
             const radius = Math.random() * size;
-            const sprayX = x + Math.cos(angle) * radius;
-            const sprayY = y + Math.sin(angle) * radius;
-            ctx.fillStyle = getRGBAColor(color, opacity);
-            ctx.fillRect(sprayX, sprayY, 1, 1);
+            const sX = coord.x + Math.cos(angle) * radius;
+            const sY = coord.y + Math.sin(angle) * radius;
+            ctx.fillStyle = hexToRGBA(activeColor, opacity);
+            ctx.fillRect(sX, sY, 1, 1);
         }
+        return;
     }
 
-    [lastX, lastY] = [x, y];
+    points.push({ x: coord.x, y: coord.y });
+
+    if (points.length < 3) return;
+
+    ctx.beginPath();
+    // Akıcı hatlar sağlamak için fırçayı önceki merkez noktasına kaydırıyoruz
+    ctx.moveTo(points[0].x, points[0].y);
+
+    // Bezier Eğrisi ile Köşeleri Yumuşatma Algoritması (Yağ gibi akma hissi)
+    for (var i = 1; i < points.length - 2; i++) {
+        var xc = (points[i].x + points[i + 1].x) / 2;
+        var yc = (points[i].y + points[i + 1].y) / 2;
+        ctx.quadraticCurveTo(points[i].x, points[i].y, xc, yc);
+    }
+
+    // Son iki noktayı bağlama
+    ctx.quadraticCurveTo(points[i].x, points[i].y, points[i + 1].x, points[i + 1].y);
+
+    // Araç Tiplerine Göre Fırça Ayarları
+    if (currentTool === 'eraser') {
+        ctx.strokeStyle = '#ffffff';
+    } else if (currentTool === 'pen') {
+        ctx.strokeStyle = hexToRGBA(activeColor, opacity);
+        ctx.lineWidth = size * 0.5; // Kalem daha incedir
+    } else if (currentTool === 'brush') {
+        ctx.strokeStyle = hexToRGBA(activeColor, opacity);
+        ctx.lineWidth = size;
+    } else if (currentTool === 'marker') {
+        ctx.strokeStyle = hexToRGBA(activeColor, opacity * 0.6); // Yarı şeffaf geçiş
+        ctx.lineWidth = size * 1.4;
+    } else if (currentTool === 'glow') {
+        ctx.strokeStyle = hexToRGBA(activeColor, opacity);
+        ctx.lineWidth = size;
+        ctx.shadowBlur = size * 0.6;
+        ctx.shadowColor = activeColor;
+    }
+
+    ctx.stroke();
+    
+    // Bellek şişmesini önlemek için eskiyen noktaları temizle
+    if (points.length > 20) {
+        points.shift();
+    }
 }
 
-// Çizim Başlangıç Noktası Sabitleyici
-function startDrawing(e) {
-    isDrawing = true;
+// Çizim Bitiş Noktası
+function stopDrawing() {
+    if (isDrawing) {
+        isDrawing = false;
+        saveState(); // Çizgi bittiği an ekrandaki son durumu tarihe yaz
+    }
+}
+
+// Koordinat Çözümleme Adaptörü (Mouse & Touch Ortak)
+function getCoordinates(e) {
     const rect = canvas.getBoundingClientRect();
     const clientX = e.clientX || (e.touches && e.touches[0].clientX);
     const clientY = e.clientY || (e.touches && e.touches[0].clientY);
-    [lastX, lastY] = [clientX - rect.left, clientY - rect.top];
+    return {
+        x: clientX - rect.left,
+        y: clientY - rect.top
+    };
 }
 
-// Pointer Events (Hem mouse, hem dokunmatik ekranları tek kodda en yüksek hızda çalıştırır)
+// Pointer Dinleyicileri (En yüksek girdi hızı için pointer eventleri kullanıldı)
 canvas.addEventListener('pointerdown', startDrawing);
 canvas.addEventListener('pointermove', draw);
-window.addEventListener('pointerup', () => isDrawing = false);
+window.addEventListener('pointerup', stopDrawing);
 
-// Dinamik Sürgü (Slider) Değer Değişimleri
-sizeSlider.addEventListener('input', (e) => sizeVal.textContent = e.target.value);
-opacitySlider.addEventListener('input', (e) => opacityVal.textContent = e.target.value);
+// Sürgü Gösterge Dinleyicileri
+sizeSlider.addEventListener('input', (e) => sizeVal.textContent = e.target.value + 'px');
+opacitySlider.addEventListener('input', (e) => opacityVal.textContent = e.target.value + '%');
 
-// Araç Seçim Yönetimi
-toolIcons.forEach(tool => {
-    tool.addEventListener('click', (e) => {
-        document.querySelector('.tool-icon.active').classList.remove('active');
-        e.target.classList.add('active');
-        currentTool = e.target.id;
+// Araç Seçim Paneli Yönetimi
+toolBtns.forEach(btn => {
+    btn.addEventListener('click', (e) => {
+        document.querySelector('.tool-btn.active').classList.remove('active');
+        const target = e.target.closest('.tool-btn');
+        target.classList.add('active');
+        currentTool = target.dataset.type;
     });
 });
 
-// Ekranı Sıfırlama
-clearBtn.addEventListener('click', () => {
-    if (confirm('PAINTING IS LIFE: Bu çalışmayı temizlemek istediğinizden emin misiniz?')) {
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        setupBrushQuality();
+// Gelişmiş Renk Seçici Dinleyicisi
+globalColorPicker.addEventListener('input', (e) => {
+    activeColor = e.target.value;
+    document.querySelector('.palette-color.active')?.classList.remove('active');
+});
+
+// Hızlı Renk Paleti Seçimleri
+quickPalette.addEventListener('click', (e) => {
+    if (e.target.classList.contains('palette-color')) {
+        document.querySelector('.palette-color.active')?.classList.remove('active');
+        e.target.classList.add('active');
+        activeColor = e.target.dataset.color;
+        globalColorPicker.value = activeColor;
     }
 });
 
-// Yüksek Kaliteli PNG Dışa Aktarma
+// Tümünü Temizleme Fonksiyonu
+clearBtn.addEventListener('click', () => {
+    if (confirm('PAINTING IS LIFE: Bu şaheseri sıfırlamak istediğinizden emin misiniz?')) {
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        saveState();
+    }
+});
+
+// Profesyonel 4K PNG İndirme Çıktısı
 exportBtn.addEventListener('click', () => {
     const link = document.createElement('a');
-    link.download = 'painting-is-life-art.png';
+    link.download = 'painting-is-life-sketch.png';
     link.href = canvas.toDataURL('image/png', 1.0);
     link.click();
 });
 
-// İlk Yükleme Tetikleyicisi
+// Başlatıcı Kurulum Kontrolü
 window.addEventListener('DOMContentLoaded', () => {
-    resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
+    adjustCanvasEngine();
+    window.addEventListener('resize', adjustCanvasEngine);
 });
-      
+            
